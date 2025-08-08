@@ -1,5 +1,5 @@
 export const PRE_META = [
-  { slug: "decision-context",    label: "Decision Context" },
+  { slug: "decision-multiverse",    label: "Decision Multiverse" },
   { slug: "decision-stacker",    label: "Decision Stacker" },
   { slug: "decision-exploration",label: "Decision Exploration" },
   { slug: "perspective-tracking",label: "Perspective Tracking" },

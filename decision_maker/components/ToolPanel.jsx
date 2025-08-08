@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 
 // map slugs -> dynamic imports (default exports)
 const Comps = {
-  "decision-context":    dynamic(() => import("./tools/DecisionMultiverse")),
+  "decision-multiverse":    dynamic(() => import("./tools/DecisionMultiverse"), { ssr: false }),
   "decision-stacker":    dynamic(() => import("./tools/DecisionStacker")),
   "decision-exploration":dynamic(() => import("./tools/DecisionExplorer")),
   "perspective-tracking":dynamic(() => import("./tools/PerspectiveTracker")),
