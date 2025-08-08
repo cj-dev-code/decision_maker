@@ -1,17 +1,32 @@
 // components/ToolPanel.jsx
 "use client";
-
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { TOOLS } from "./tools";
+//import { TOOLS } from "./tools";
 
-export default function ToolPanel() {
-  const searchParams = useSearchParams();
-  const selected = searchParams.get("tool") || TOOLS[0].slug;
-  const match = TOOLS.find((t) => t.slug === selected) || TOOLS[0];
-  const Comp = match.Comp;
 
+// map slugs -> dynamic imports (default exports)
+const Comps = {
+  "decision-context":    dynamic(() => import("./tools/DecisionMultiverse")),
+  "decision-stacker":    dynamic(() => import("./tools/DecisionStacker")),
+  "decision-exploration":dynamic(() => import("./tools/DecisionExplorer")),
+  "perspective-tracking":dynamic(() => import("./tools/PerspectiveTracker")),
+  "option-exploration":  dynamic(() => import("./tools/OptionExplorer")),
+
+  // post tools
+  "resulting":           dynamic(() => import("./tools/Unresulter")),
+  "debrief":             dynamic(() => import("./tools/Debriefer")),        // make these files or stub them
+  "luck-vs-skill":       dynamic(() => import("./tools/LuckVsSkiller")),
+//  "lessons":             dynamic(() => import("./tools/Lessons")),
+//  "next-actions":        dynamic(() => import("./tools/NextActions")),
+};
+
+export default function ToolPanel({ toolsMeta }) {
+  const sp = useSearchParams();
+  const selected = sp.get("tool") || toolsMeta[0].slug;
+  const Comp = Comps[selected] ?? (() => <div>Tool not found: {selected}</div>);
   return (
-    <div className="mt-4 border rounded p-4 min-h-[50vh]">
+    <div className="h-full">
       <Comp />
     </div>
   );

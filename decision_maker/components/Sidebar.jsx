@@ -6,7 +6,7 @@ export default function Sidebar() {
       <div className="font-medium">User Info</div>
       <ul className="space-y-1">
         {["Goal 1","Goal 2","Goal 3"].map((g,i)=>(
-          <li key={i}><Link className="hover:underline" href="/decision/demo/pre">{g}</Link></li>
+          <li key={i}><Link className="hover:underline" href={`/decision/${i}/pre`}>{g}</Link></li>
         ))}
       </ul>
     </aside>
