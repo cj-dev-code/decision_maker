@@ -1,4 +1,5 @@
 // components/tools/index.js
+import SmartGoal from "./SmartGoal";
 import DecisionExplorer from "./DecisionExplorer";
 import DecisionMultiverse from "./DecisionMultiverse";
 import DecisionStacker from "./DecisionStacker";
@@ -13,7 +14,8 @@ import LuckVsSkiller from "./LuckVsSkiller";
 
 
 export const PRE_TOOLS = [
-  { slug: "decision-context", label: "Decision Context", Comp: DecisionMultiverse },
+  { slug: "smart-goal", label: "Smart Goal", Comp: SmartGoal },
+  { slug: "decision-multiverse", label: "Decision Multiverse", Comp: DecisionMultiverse },
   { slug: "decision-stacker", label: "Decision Stacker", Comp: DecisionStacker },
   { slug: "decision-exploration", label: "Decision Exploration", Comp: DecisionExplorer },
   { slug: "perspective-tracking", label: "Perspective Tracking", Comp: PerspectiveTracker },
@@ -21,7 +23,7 @@ export const PRE_TOOLS = [
 ];
 
 export const POST_TOOLS = [
-  { slug: "resulting",           label:"UnResulter",              Comp: Unresulter},
+  { slug: "resulting",           label:"Unresulter",              Comp: Unresulter},
   { slug: "debrief",             label: "Decision Debrief",       Comp: Debriefer },
   { slug: "luck-vs-skill",       label: "Luck vs Skill",          Comp: LuckVsSkiller },
 //  { slug: "lessons",             label: "Lessons Learned",        Comp: Lessons },

@@ -8,7 +8,7 @@ export default function Page() {
     <div className="h-full grid grid-rows-3 gap-3">
       <div className="min-h-0 overflow-x-auto"><ToolStrip toolsMeta={POST_META} /></div>
       <div className="min-h-0 overflow-auto border rounded"><ToolPanel toolsMeta={POST_META} /></div>
-      <div className="min-h-0 overflow-hidden"><LLMDialog /></div>
+      <div className="min-h-0 overflow-hidden"><LLMDialog tool="speed_checker"/></div>
     </div>
   );
 }
