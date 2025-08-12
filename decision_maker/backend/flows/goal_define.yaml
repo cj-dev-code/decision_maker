@@ -1,0 +1,22 @@
+id: goal_define
+start: clarify
+nodes:
+  clarify:
+    kind: composite
+    asks:
+      - id: goal
+        type: text
+        prompt: "One sentence: what do you want to accomplish?"
+      - id: why
+        type: text
+        prompt: "Why now? What makes this important?"
+      - id: success
+        type: text
+        prompt: "What does success look like in plain language?"
+    compute:
+      pass_if: "max(year,month,day) <= 2"  # placeholder, unused here
+    on_answer:
+      - else: done
+  done:
+    kind: end
+    recommendation: "Great—goal sketched. Move on when ready."

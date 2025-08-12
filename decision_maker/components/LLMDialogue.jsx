@@ -20,10 +20,11 @@ export default function LLMDialog({
   const getToolLabel = (slug) =>
     toolsMeta.find((t) => t.slug === slug)?.label || slug;
 
+  const GENERIC_OPENER = "How can I help you?";
+
   // --- state
-  const initialCurrent = useMemo(() => [], []);
-  const [current, setCurrent] = useState(initialCurrent);
-  const [saved, setSaved] = useState([]); // [{id,title,messages,createdAt,tool}]
+  const [current, setCurrent] = useState([]); // new-dialogue working buffer
+  const [saved, setSaved] = useState([]);     // [{id,title,messages,createdAt,tool}]
   const [selected, setSelected] = useState({ type: "current", id: null });
 
   const [text, setText] = useState("");
@@ -52,16 +53,35 @@ export default function LLMDialog({
   const messagesEqual = (a, b) =>
     a.length === b.length && a.every((m, i) => m.role === b[i]?.role && m.text === b[i]?.text);
 
-  const titleFromMessages = (msgs, { fallbackLabel }) => {
+  const firstUserSnippet = (msgs) => {
     const firstUser = msgs.find((m) => m.role === "user")?.text?.trim();
-    if (firstUser) {
-      const raw = firstUser.slice(0, 20);
-      return raw + (firstUser.length > 20 ? "…" : "");
-    }
-    return fallbackLabel || "Dialogue";
+    if (!firstUser) return "";
+    const raw = firstUser.slice(0, 20);
+    return raw + (firstUser.length > 20 ? "…" : "");
   };
 
-  const openCurrent = () => setSelected({ type: "current", id: null });
+  // Title rule used for both header (preview) and actual save:
+  // - If no existing saved chat for this tool -> use tool label
+  // - Else -> use first 20 chars of first user message, or tool label if none
+  const computeSavedTitle = (msgs, toolSlug, savedList) => {
+    const label = getToolLabel(toolSlug);
+    const exists = savedList.some((s) => s.tool === toolSlug);
+    if (!exists) return label;
+    const snippet = firstUserSnippet(msgs);
+    return snippet || label;
+  };
+
+  const openCurrent = () => {
+    setSelected({ type: "current", id: null });
+    // If the tool already has a saved chat, reset to a generic (non-tool) opener.
+    const hasSavedForTool = saved.some((s) => s.tool === tool);
+    if (hasSavedForTool) {
+      setCurrent([{ role: "assistant", text: GENERIC_OPENER }]);
+      // prevent any auto-init opener from firing
+      initKeyRef.current = null;
+    }
+  };
+
   const openSaved = (id) => setSelected({ type: "saved", id });
 
   const selectedMessages = useMemo(() => {
@@ -98,33 +118,35 @@ export default function LLMDialog({
     if (prevToolRef.current === tool) return;
 
     const prevTool = prevToolRef.current;
-    const prevLabel = getToolLabel(prevTool);
 
     // 1) If on current and it has content, save it under the PREVIOUS tool
     if (selected.type === "current" && hasContent(current)) {
-      const already = saved.find(
-        (s) => s.tool === prevTool && messagesEqual(s.messages, current)
-      );
-      if (!already) {
+      setSaved((prevSaved) => {
+        const already = prevSaved.find(
+          (s) => s.tool === prevTool && messagesEqual(s.messages, current)
+        );
+        if (already) return prevSaved;
+
         const id = rid();
-        const title = titleFromMessages(current, { fallbackLabel: prevLabel });
-        setSaved((prev) => [
-          {
-            id,
-            title,
-            createdAt: new Date().toISOString(),
-            tool: prevTool,
-            messages: current,
-          },
-          ...prev,
-        ]);
-      }
+        const title = computeSavedTitle(current, prevTool, prevSaved);
+        const entry = {
+          id,
+          title,
+          createdAt: new Date().toISOString(),
+          tool: prevTool,
+          messages: [...current], // clone to prevent spillover
+        };
+        return [entry, ...prevSaved];
+      });
     }
 
-    // 2) Open an existing saved chat for the NEW tool (most recent), else start fresh
-    const match = saved.find((s) => s.tool === tool);
-    if (match) {
-      setSelected({ type: "saved", id: match.id });
+    // 2) Open existing saved chat for the NEW tool, else start fresh.
+    const found = saved.find((s) => s.tool === tool);
+    if (found) {
+      setSelected({ type: "saved", id: found.id });
+      // Ensure the new-dialogue buffer is clean (prevents later spillover)
+      setCurrent([]);
+      initKeyRef.current = null;
     } else {
       setSelected({ type: "current", id: null });
       setCurrent([]); // ensure empty so init will run
@@ -136,21 +158,17 @@ export default function LLMDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
-  // --- auto-init for a fresh current session (one opener per tool)
+  // --- auto-init: only when no saved chat exists for this tool and current is empty
   useEffect(() => {
-    // Only init when:
-    // - we're in the "current" buffer
-    // - there's NO saved chat for this tool
-    // - current buffer is empty
     const hasSavedForTool = saved.some((s) => s.tool === tool);
     if (selected.type !== "current") return;
-    if (hasSavedForTool) return;
+    if (hasSavedForTool) return;    // if there is a saved chat, never auto-init
     if (current.length > 0) return;
 
     const key = `current::${tool}`;
     if (initKeyRef.current === key) return;
 
-    let alive = true; // cancellation guard
+    let alive = true;
     setErr("");
     setThinking(true);
 
@@ -173,12 +191,11 @@ export default function LLMDialog({
             ? data.reply
             : "What decision are we working on?";
 
-        // Re-check conditions after the async call
         if (!alive) return;
         const stillSavedForTool = saved.some((s) => s.tool === tool);
         if (selected.type !== "current") return;
-        if (stillSavedForTool) return; // if a saved chat appeared, don't add opener
-        if (initKeyRef.current === key) return; // already initialized elsewhere
+        if (stillSavedForTool) return; // a saved chat appeared, don't add opener
+        if (initKeyRef.current === key) return;
 
         setSelectedMessages((prev) => [...prev, { role: "assistant", text: opener }]);
         initKeyRef.current = key;
@@ -193,10 +210,7 @@ export default function LLMDialog({
       }
     })();
 
-    return () => {
-      alive = false;
-    };
-    // Include `saved` to keep the guard accurate; opener won't append if one appears.
+    return () => { alive = false; };
   }, [tool, selected.type, current.length, saved, API_URL, systemOverride]);
 
   // --- send
@@ -206,13 +220,19 @@ export default function LLMDialog({
     const payloadText = text.trim();
     if (!payloadText || loading) return;
 
+    const baseMsgs =
+      selected.type === "current"
+        ? current
+        : (saved.find((s) => s.id === selected.id)?.messages || []);
+
+    // optimistic append
     setSelectedMessages((prev) => [...prev, { role: "user", text: payloadText }]);
     setText("");
     setLoading(true);
     setThinking(true);
 
     try {
-      const msgsNow = selectedMessages.concat({ role: "user", text: payloadText });
+      const msgsNow = baseMsgs.concat({ role: "user", text: payloadText });
       const body = {
         session_id: selected.type === "current" ? "current" : selected.id,
         message: payloadText,
@@ -244,21 +264,28 @@ export default function LLMDialog({
   // --- manual save button
   const saveCurrent = () => {
     if (!current.length) return;
-    const id = rid();
-    const title = titleFromMessages(current, { fallbackLabel: getToolLabel(tool) });
-    setSaved((prev) => [
-      {
+
+    setSaved((prevSaved) => {
+      const id = rid();
+      const title = computeSavedTitle(current, tool, prevSaved);
+      const entry = {
         id,
         title,
         createdAt: new Date().toISOString(),
         tool,
-        messages: current,
-      },
-      ...prev,
-    ]);
-    setCurrent(initialCurrent);
+        messages: [...current], // clone to prevent spillover
+      };
+      return [entry, ...prevSaved];
+    });
+
+    // Hard reset the "New Dialogue" buffer to a generic, non-tool opener
+    setCurrent([{ role: "assistant", text: GENERIC_OPENER }]);
     setSelected({ type: "current", id: null });
-    initKeyRef.current = null;
+    setText("");
+    setErr("");
+    setThinking(false);
+    setLoading(false);
+    initKeyRef.current = null; // do not auto-init; this is generic mode
   };
 
   // --- delete / rename
@@ -287,16 +314,21 @@ export default function LLMDialog({
     setEditingTitle("");
   };
 
-  // --- header title logic
+  // --- header title logic (preview shows what the save-name will be)
   const isCurrent = selected.type === "current";
   const hasSavedForTool = saved.some((s) => s.tool === tool);
   const headerTitle = (() => {
     if (isCurrent) {
       if (!hasAnyUser(current)) {
-        return hasSavedForTool ? "New Dialogue" : getToolLabel(tool);
+        // If there is already a saved chat for this tool, call it "New Dialogue".
+        if (hasSavedForTool) return "New Dialogue";
+        // Otherwise, preview the eventual save-name for a first chat: tool label.
+        return computeSavedTitle(current, tool, saved);
       }
-      return titleFromMessages(current, { fallbackLabel: getToolLabel(tool) });
+      // With user input, preview the eventual save-name now.
+      return computeSavedTitle(current, tool, saved);
     }
+    // Saved chat
     return saved.find((s) => s.id === selected.id)?.title ?? "Dialogue";
   })();
 

@@ -1,0 +1,22 @@
+id: resulting
+start: reflect
+nodes:
+  reflect:
+    kind: composite
+    asks:
+      - id: outcome
+        type: text
+        prompt: "What happened (outcome only, no judgment)?"
+      - id: decision_quality
+        type: text
+        prompt: "Given the info at the time, what was good about the decision process?"
+      - id: improve
+        type: text
+        prompt: "What would you change next time to improve the process?"
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Resulting done. Separate luck from skill in the next step."

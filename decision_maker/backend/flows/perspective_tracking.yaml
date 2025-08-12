@@ -1,0 +1,22 @@
+id: perspective_tracking
+start: collect
+nodes:
+  collect:
+    kind: composite
+    asks:
+      - id: supporter
+        type: text
+        prompt: "Supportive POV: strongest argument FOR your leading option?"
+      - id: skeptic
+        type: text
+        prompt: "Skeptical POV: strongest argument AGAINST it?"
+      - id: missing_info
+        type: text
+        prompt: "What info would change your mind?"
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Perspectives logged. Stress test complete enough to proceed."

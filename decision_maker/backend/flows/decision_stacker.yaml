@@ -1,0 +1,19 @@
+id: decision_stacker
+start: find_prereqs
+nodes:
+  find_prereqs:
+    kind: composite
+    asks:
+      - id: prereq_low
+        type: text
+        prompt: "List low-impact decisions that unlock info (comma-separated)."
+      - id: prereq_high
+        type: text
+        prompt: "Any high-impact decisions that can wait until after probes?"
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Stack created. Do low-impact first, then reassess."

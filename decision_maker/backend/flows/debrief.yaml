@@ -1,0 +1,22 @@
+id: debrief
+start: quick
+nodes:
+  quick:
+    kind: composite
+    asks:
+      - id: what_worked
+        type: text
+        prompt: "What worked well?"
+      - id: what_didnt
+        type: text
+        prompt: "What didn’t?"
+      - id: next_time
+        type: text
+        prompt: "One change for next time?"
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Debrief captured. Log and move forward."

@@ -1,0 +1,22 @@
+id: decision_exploration
+start: options
+nodes:
+  options:
+    kind: composite
+    asks:
+      - id: decision
+        type: text
+        prompt: "What decision are you making?"
+      - id: options_list
+        type: text
+        prompt: "List 2–5 options (comma-separated)."
+      - id: constraints
+        type: text
+        prompt: "Key constraints/preferences to respect?"
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Options clarified—ready for outcomes and base rates."

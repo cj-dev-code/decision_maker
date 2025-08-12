@@ -1,0 +1,19 @@
+id: luck_vs_skill
+start: assess
+nodes:
+  assess:
+    kind: composite
+    asks:
+      - id: variance_sources
+        type: text
+        prompt: "List main sources of variance (luck) vs. controllable factors (skill)."
+      - id: weight
+        type: text
+        prompt: "Rough split luck/skill for this outcome? (e.g., 60/40)"
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Luck vs. skill captured. Adjust expectations and practice."
