@@ -6,17 +6,30 @@ nodes:
     asks:
       - id: decision
         type: text
-        prompt: "What decision are you making?"
+        prompt: >
+          What decision are you making? (one sentence)
+          Examples: "Which front-end to use", "Which company to target first".
       - id: options_list
         type: text
-        prompt: "List 2–5 options (comma-separated)."
-      - id: constraints
+        prompt: >
+          List 2–5 options (comma-separated).
+          Tip: include a conservative/base option and a bold option.
+      - id: must_haves
         type: text
-        prompt: "Key constraints/preferences to respect?"
+        prompt: >
+          What are the MUST-haves (non‑negotiables)? (e.g., timeline ≤ 2 weeks, left‑leaning sources only)
+      - id: nice_to_haves
+        type: text
+        prompt: >
+          What are NICE‑to‑haves? (e.g., fastest prototype path, strongest hiring signal)
+      - id: risks
+        type: text
+        prompt: >
+          Name 1–3 biggest risks or failure modes you want to guard against.
     compute:
       pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: end
   end:
     kind: end
-    recommendation: "Options clarified—ready for outcomes and base rates."
+    recommendation: "Options + criteria captured. Run option‑exploration or multiverse next."

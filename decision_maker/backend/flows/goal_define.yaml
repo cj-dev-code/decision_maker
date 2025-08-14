@@ -1,22 +1,36 @@
 id: goal_define
-start: clarify
+start: specify
+persona:
+  name: "Professional Goal Setter"
+  prefix: "I’m your Professional Goal Setter—let’s make the target crystal clear."
+
 nodes:
-  clarify:
+  specify:
     kind: composite
     asks:
       - id: goal
         type: text
-        prompt: "One sentence: what do you want to accomplish?"
-      - id: why
-        type: text
-        prompt: "Why now? What makes this important?"
-      - id: success
-        type: text
-        prompt: "What does success look like in plain language?"
+        prompt: >
+          What do you want to achieve?
+        criterion:
+          rubric: |
+            Sufficient iff the user’s statement includes:
+            (a) a verifiable outcome (action + object) — not an activity,
+            (b) a timeframe (date/range) OR explicitly says "unsure",
+            (c) evidence of done (an observable proof).
+            Accept multi-turn answers; normalize into one sentence.
+        examples:
+          - "Sign an AI Engineer job offer by Dec 1, 2025, proven by a signed offer letter."
+          - "Ship a public demo by Sept 30, proven by a working URL accessible without auth."
+          - "Run 5 km under 30:00 within 8 weeks, proven by a recorded time."
+        bounds: |
+          Only specify the goal (outcome + timeframe + evidence-of-done).
+          Do NOT propose plans, steps, tactics, companies, or recommendations.
     compute:
-      pass_if: "max(year,month,day) <= 2"  # placeholder, unused here
+      pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: done
+
   done:
     kind: end
-    recommendation: "Great—goal sketched. Move on when ready."
+    recommendation: "Goal looks clear. Next, use the Options tool to explore ways to reach it."

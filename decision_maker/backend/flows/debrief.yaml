@@ -6,17 +6,24 @@ nodes:
     asks:
       - id: what_worked
         type: text
-        prompt: "What worked well?"
+        prompt: >
+          What worked well? (tactics, habits, comms, tooling)
       - id: what_didnt
         type: text
-        prompt: "What didn’t?"
-      - id: next_time
+        prompt: >
+          What didn’t? (bottlenecks, surprises, assumptions)
+      - id: one_keep
         type: text
-        prompt: "One change for next time?"
+        prompt: >
+          One behavior to KEEP next time.
+      - id: one_change
+        type: text
+        prompt: >
+          One behavior to CHANGE next time.
     compute:
       pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: end
   end:
     kind: end
-    recommendation: "Debrief captured. Log and move forward."
+    recommendation: "Debrief logged. Translate changes into a concrete next probe."

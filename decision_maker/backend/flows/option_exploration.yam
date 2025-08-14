@@ -1,0 +1,36 @@
+id: option_exploration
+start: single_option
+nodes:
+  single_option:
+    kind: composite
+    asks:
+      - id: option_name
+        type: text
+        prompt: >
+          Which option are we analyzing?
+      - id: upsides
+        type: text
+        prompt: >
+          List top 3 upsides (comma‑separated).
+          Prompts: speed, clarity, cost savings, learning, reputation, ethics.
+      - id: downsides
+        type: text
+        prompt: >
+          List top 3 downsides (comma‑separated).
+          Prompts: time sink, lock‑in, complexity, bias exposure, maintainability.
+      - id: mitigations
+        type: text
+        prompt: >
+          For each downside, one mitigation/probe.
+          Examples: “timebox to 1 day”, “A/B across 2 stacks”, “explicit source policy”.
+      - id: early_signals
+        type: text
+        prompt: >
+          What early indicators would tell you it’s working (or not)? Pick 1–3.
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Option analyzed. Compare options against must‑haves/nice‑to‑haves."

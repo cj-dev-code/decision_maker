@@ -1,4 +1,3 @@
-# backend/flow_engine.py
 import operator
 import yaml
 import os
@@ -26,7 +25,13 @@ def load_flows(dirpath: str) -> Dict[str, Dict[str, Any]]:
     return registry
 
 def eval_expr(expr, answers):
-    # very small, safe evaluator for patterns like "max(year,month,day) <= 2"
+    """
+    Very small, safe evaluator for patterns like "max(year,month,day) <= 2".
+    Missing keys are treated as 0 so expressions don't crash early in a flow.
+    """
+    if not expr:
+        return True
+    expr = str(expr).strip()
     if expr.startswith("max("):
         inside = expr[4:expr.index(")")]
         keys = [k.strip() for k in inside.split(",")]
@@ -36,40 +41,107 @@ def eval_expr(expr, answers):
         return OPS[op](val, thresh)
     raise ValueError("unsupported expr")
 
+# ---------- persona helpers ----------
+def _persona_prefix(flow: Dict[str, Any]) -> str:
+    try:
+        p = (flow or {}).get("persona", {}) or {}
+        return (p.get("prefix") or "").strip()
+    except Exception:
+        return ""
+
+def _apply_persona(flow: Dict[str, Any], ask: Dict[str, Any]) -> Dict[str, Any]:
+    if not ask:
+        return ask
+    prefix = _persona_prefix(flow)
+    if not prefix:
+        return ask
+    out = dict(ask)
+    if not out.get("prompt", "").strip().startswith(prefix):
+        out["prompt"] = (prefix + " " + out.get("prompt", "")).strip()
+    return out
+
 def next_node(flow, node_id, answers):
     node = flow["nodes"][node_id]
+
     if node["kind"] == "composite":
+        # Ask outstanding questions (validator enforces sufficiency; here we gate on presence)
         for q in node["asks"]:
-            if q["id"] not in answers:
-                return {"ask": q, "node_id": node_id, "awaiting": q["id"]}
-        cond = node["compute"]["pass_if"]
-        ok = eval_expr(cond, answers)
-        for rule in node["on_answer"]:
-            if ("when" in rule and ok) or ("else" in rule and not ok):
-                return {"goto": rule["goto"]}
+            if q["id"] not in answers or not str(answers[q["id"]]).strip():
+                ask = _apply_persona(flow, q)
+                return {"ask": ask, "node_id": node_id, "awaiting": q["id"]}
+
+        # All questions present -> compute routing
+        cond_expr = (node.get("compute") or {}).get("pass_if")
+        ok = eval_expr(cond_expr, answers) if cond_expr is not None else True
+
+        rules = node.get("on_answer", []) or []
+        fallback_else = None
+        unconditional = None
+
+        for rule in rules:
+            # Accept both styles:
+            #   - {"when":"pass_if","goto":"X"}
+            #   - {"else":"Y"}
+            #   - {"goto":"Z"}   (unconditional default)
+            if "when" in rule:
+                when = rule.get("when")
+                matched = False
+                if when == "pass_if":
+                    matched = bool(ok)
+                else:
+                    # allow inline expressions in 'when'
+                    try:
+                        matched = bool(eval_expr(when, answers))
+                    except Exception:
+                        matched = False
+                if matched:
+                    dest = rule.get("goto") or rule.get("then") or rule.get("pass") or rule.get("else")
+                    if dest:
+                        return {"goto": dest}
+            elif "else" in rule:
+                fallback_else = rule.get("else")
+            elif "goto" in rule and unconditional is None:
+                unconditional = rule.get("goto")
+
+        # If no 'when' matched, prefer explicit else, otherwise unconditional goto
+        if fallback_else:
+            return {"goto": fallback_else}
+        if unconditional:
+            return {"goto": unconditional}
+
+        # If nothing to route to, but composite is done, treat as terminal if defined
+        if node_id in flow.get("nodes", {}) and "next" in node:
+            return {"goto": node["next"]}
+
     elif node["kind"] == "yesno":
         ans = str(answers.get(node_id, "")).lower()
         key = "on_yes" if ans in ("y","yes","true","1") else "on_no"
         return {"goto": node[key]}
+
     elif node["kind"] == "collect":
-        # one free-form field required under node_id key
         if node_id not in answers or not str(answers[node_id]).strip():
-            return {"ask": {"id": node_id, "type": "text", "prompt": node["prompt"]},
-                    "node_id": node_id, "awaiting": node_id}
+            ask = {"id": node_id, "type": "text", "prompt": node["prompt"]}
+            ask = _apply_persona(flow, ask)
+            return {"ask": ask, "node_id": node_id, "awaiting": node_id}
         return {"goto": node["next"]}
+
     elif node["kind"] == "end":
         return {"end": True, "recommendation": node.get("recommendation", "Finished.")}
+
     return {"error": "unhandled"}
 
 def first_prompt(flow) -> str:
-    """Return a sensible first question/prompt for a flow's start node."""
+    """Return a sensible first question/prompt for a flow's start node, with persona voice if present."""
     start = flow["start"]
     node = flow["nodes"][start]
+    prefix = _persona_prefix(flow)
+
     if node["kind"] == "composite":
-        # first ask's prompt
-        return node["asks"][0]["prompt"]
+        p = node["asks"][0]["prompt"]
+        return ((prefix + " " + p).strip() if prefix else p)
     elif node["kind"] in ("yesno", "collect"):
-        return node["prompt"]
+        p = node["prompt"]
+        return ((prefix + " " + p).strip() if prefix else p)
     elif node["kind"] == "end":
         return node.get("recommendation", "Finished.")
     return "Let's begin."

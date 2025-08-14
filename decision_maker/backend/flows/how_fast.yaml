@@ -2,17 +2,16 @@ id: how_fast
 start: happiness_test
 nodes:
   happiness_test:
-    kind: composite      # multi-question step
+    kind: composite
     asks:
       - id: year
         type: scale_1_5
         prompt: >
-          Imagine it’s a year from now and someone asks how happy you are.
-          How much did THIS decision impact your happiness today? (1–5)
+          Imagine it’s a year from now. How much did THIS decision impact your happiness? (1–5)
       - id: month
         type: scale_1_5
         prompt: >
-          Same question, but impact over the next month. (1–5)
+          Same, but over the next month. (1–5)
       - id: day
         type: scale_1_5
         prompt: >
@@ -32,21 +31,20 @@ nodes:
   freeroll:
     kind: yesno
     prompt: >
-      Is this a freeroll? (Little or no downside; upside meaningfully better.)
+      Is this a freeroll? (Little/no downside; upside meaningfully better.)
     on_yes: go_fast
     on_no: repeatable
   repeatable:
     kind: yesno
     prompt: >
-      Can you repeat this decision soon (more shots on goal)? If yes, deciding
-      sooner increases learning value.
+      Can you repeat this decision soon (more shots on goal)? If yes, decide faster.
     on_yes: go_fast_faster
     on_no: can_you_go_wrong
   can_you_go_wrong:
     kind: yesno
     prompt: >
-      Are you stuck between two great options with little risk/variance difference
-      and little more info to gain? If so, you can decide now.
+      Stuck between two good options with little risk/variance difference
+      and little info to gain? If so, decide now.
     on_yes: go_fast
     on_no: quit_cost
   quit_cost:
@@ -58,19 +56,18 @@ nodes:
   parallel:
     kind: yesno
     prompt: >
-      Can you run multiple options in parallel (small probes)? 
+      Can you run multiple options in parallel (small probes)?
     on_yes: go_even_faster
     on_no: stack
   stack:
     kind: yesno
     prompt: >
-      Can you decision-stack (do low-impact decisions first to unlock info)?
+      Can you decision‑stack (low‑impact first to unlock info)?
     on_yes: low_first
     on_no: slow_down
 
-# terminal labels
-  go_fast: { kind: end, recommendation: "Go fast." }
-  go_fast_faster: { kind: end, recommendation: "If yes, go even faster." }
-  go_even_faster: { kind: end, recommendation: "If yes, go even faster." }
-  low_first: { kind: end, recommendation: "Do the lower-impact decisions first." }
-  slow_down: { kind: end, recommendation: "SLOW DOWN!" }
+  go_fast:         { kind: end, recommendation: "Go fast." }
+  go_fast_faster:  { kind: end, recommendation: "If repeatable, go even faster." }
+  go_even_faster:  { kind: end, recommendation: "Parallelize small probes—go even faster." }
+  low_first:       { kind: end, recommendation: "Do the lower‑impact decisions first." }
+  slow_down:       { kind: end, recommendation: "SLOW DOWN—collect more info or reduce quit costs." }

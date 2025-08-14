@@ -6,17 +6,26 @@ nodes:
     asks:
       - id: outcome
         type: text
-        prompt: "What happened (outcome only, no judgment)?"
+        prompt: >
+          Outcome only (no judgment): what happened?
+          Include any objective metrics/dates.
       - id: decision_quality
         type: text
-        prompt: "Given the info at the time, what was good about the decision process?"
+        prompt: >
+          Given info available at the time, what was high‑quality about the process?
+          Prompts: explored options, checked base rates, set kill criteria, sought dissent.
+      - id: luck_skill_hypothesis
+        type: text
+        prompt: >
+          Quick hypothesis: which parts were luck vs. skill? (one sentence)
       - id: improve
         type: text
-        prompt: "What would you change next time to improve the process?"
+        prompt: >
+          One change to improve process quality next time.
     compute:
       pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: end
   end:
     kind: end
-    recommendation: "Resulting done. Separate luck from skill in the next step."
+    recommendation: "Resulting complete. Consider 'luck_vs_skill' for a deeper split."

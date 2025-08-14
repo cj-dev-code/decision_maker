@@ -6,17 +6,23 @@ nodes:
     asks:
       - id: supporter
         type: text
-        prompt: "Supportive POV: strongest argument FOR your leading option?"
+        prompt: >
+          Strongest argument FOR your leading option.
+          Prompts: comparative advantage, user demand, speed, ethics fit, hiring signal.
       - id: skeptic
         type: text
-        prompt: "Skeptical POV: strongest argument AGAINST it?"
+        prompt: >
+          Steel‑man the argument AGAINST it.
+          Prompts: lock‑in risk, maintenance burden, eval fragility, accessibility, political bias.
       - id: missing_info
         type: text
-        prompt: "What info would change your mind?"
+        prompt: >
+          What specific info would change your mind?
+          Examples: a latency benchmark, a credible left‑leaning source, a user willingness‑to‑pay number.
     compute:
       pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: end
   end:
     kind: end
-    recommendation: "Perspectives logged. Stress test complete enough to proceed."
+    recommendation: "Perspectives logged. You’re ready to test assumptions."

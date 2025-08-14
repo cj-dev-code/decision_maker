@@ -1,0 +1,35 @@
+id: decision_multiverse
+start: branches
+nodes:
+  branches:
+    kind: composite
+    asks:
+      - id: focal_option
+        type: text
+        prompt: >
+          Which single option are we stress‑testing right now?
+      - id: best_case
+        type: text
+        prompt: >
+          BEST case (plausible, not fantasy): What happens? What leading indicators show up early?
+          Examples: “demo lands an interview”, “user retention > 30% at week 2”.
+      - id: base_case
+        type: text
+        prompt: >
+          BASE case (most likely): What happens? Early signs? What’s the typical trajectory?
+      - id: worst_case
+        type: text
+        prompt: >
+          WORST case (plausible downside): What happens? Early warning signs?
+          What guardrails/kill criteria would you set?
+      - id: info_to_shift
+        type: text
+        prompt: >
+          What piece of information would most quickly shift the probabilities between these branches?
+    compute:
+      pass_if: "max(year,month,day) <= 2"
+    on_answer:
+      - else: end
+  end:
+    kind: end
+    recommendation: "Multiverse mapped. Set probes/kill criteria and consider decision stacking."

@@ -6,14 +6,23 @@ nodes:
     asks:
       - id: variance_sources
         type: text
-        prompt: "List main sources of variance (luck) vs. controllable factors (skill)."
+        prompt: >
+          List main sources of variance (luck) vs. controllable factors (skill).
+          Examples (luck): timing, external policy, recruiter mood.
+          Examples (skill): preparation, design choices, eval design, outreach quality.
       - id: weight
         type: text
-        prompt: "Rough split luck/skill for this outcome? (e.g., 60/40)"
+        prompt: >
+          Rough split luck/skill for this outcome? (e.g., 60/40). Why that split?
+      - id: counterfactual
+        type: text
+        prompt: >
+          If you replayed this 10 times, what’s the distribution of outcomes?
+          What repeatable actions push the distribution right?
     compute:
       pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: end
   end:
     kind: end
-    recommendation: "Luck vs. skill captured. Adjust expectations and practice."
+    recommendation: "Luck/skill captured. Bake repeatables into your next stack."

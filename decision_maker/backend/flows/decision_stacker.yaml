@@ -4,16 +4,29 @@ nodes:
   find_prereqs:
     kind: composite
     asks:
+      - id: target_decision
+        type: text
+        prompt: >
+          What’s the high‑impact decision you eventually want to make?
       - id: prereq_low
         type: text
-        prompt: "List low-impact decisions that unlock info (comma-separated)."
-      - id: prereq_high
+        prompt: >
+          List low‑impact, fast decisions that unlock information (comma‑separated).
+          Examples: cold emails, 1‑hour prototype, scrape base rates, 3 user calls.
+      - id: prereq_measures
         type: text
-        prompt: "Any high-impact decisions that can wait until after probes?"
+        prompt: >
+          For each low‑impact decision, what signal/metric will tell you it worked?
+          Examples: “2 replies”, “latency < 400ms”, “N=3 user confirmations”.
+      - id: can_delay_high
+        type: text
+        prompt: >
+          Which high‑impact decisions can safely wait until probes land?
+          (funding ask, stack choice lock‑in, long contract)
     compute:
       pass_if: "max(year,month,day) <= 2"
     on_answer:
       - else: end
   end:
     kind: end
-    recommendation: "Stack created. Do low-impact first, then reassess."
+    recommendation: "Stack created. Run low‑impact probes first, then re‑evaluate."
