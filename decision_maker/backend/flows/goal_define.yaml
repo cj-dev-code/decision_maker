@@ -1,36 +1,29 @@
+# backend/flows/goal_define.yaml
 id: goal_define
-start: specify
-persona:
-  name: "Professional Goal Setter"
-  prefix: "I’m your Professional Goal Setter—let’s make the target crystal clear."
-
+start: clarify
 nodes:
-  specify:
+  clarify:
     kind: composite
     asks:
       - id: goal
         type: text
         prompt: >
-          What do you want to achieve?
+          In one sentence, what do you want to accomplish?
+          Examples: "Get an AI engineering job by Dec 1, proven by a signed offer letter",
+          "Ship a live demo link for Decision Stacker", "Reduce weekly stress by 20%".
         criterion:
-          rubric: |
-            Sufficient iff the user’s statement includes:
-            (a) a verifiable outcome (action + object) — not an activity,
-            (b) a timeframe (date/range) OR explicitly says "unsure",
-            (c) evidence of done (an observable proof).
-            Accept multi-turn answers; normalize into one sentence.
+          rubric: >
+            Sufficient iff the answer includes: (a) a verifiable outcome (action+object),
+            (b) a timeframe (date/range) or says "unsure", and (c) evidence of done.
         examples:
-          - "Sign an AI Engineer job offer by Dec 1, 2025, proven by a signed offer letter."
-          - "Ship a public demo by Sept 30, proven by a working URL accessible without auth."
-          - "Run 5 km under 30:00 within 8 weeks, proven by a recorded time."
-        bounds: |
-          Only specify the goal (outcome + timeframe + evidence-of-done).
-          Do NOT propose plans, steps, tactics, companies, or recommendations.
+          - Get an AI engineering job by Dec 1, 2025, proven by a signed offer letter.
+          - Publish one peer-reviewed paper this year, evidenced by the acceptance email.
     compute:
-      pass_if: "max(year,month,day) <= 2"
+      pass_if: "max(year,month,day) <= 2"   # placeholder; validator handles sufficiency
     on_answer:
       - else: done
-
   done:
     kind: end
-    recommendation: "Goal looks clear. Next, use the Options tool to explore ways to reach it."
+    recommendation: >
+      Goal looks clear. Next I’ll propose decision axes you can explore
+      (e.g., strategy, target, constraints). Then pick an axis in the “Axes” box to run the Speed Check.

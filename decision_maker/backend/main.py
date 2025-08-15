@@ -1,6 +1,6 @@
 # backend/main.py
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +10,10 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 
-from flow_engine import load_flows, next_node, first_prompt
+from flow_engine import load_flows, next_node
 
 import json
 from collections import defaultdict
-import yaml
 
 # ---------------- Session Store ----------------
 SESSIONS = defaultdict(lambda: {
@@ -82,7 +81,6 @@ dialogue_prompt = ChatPromptTemplate.from_messages([
 
 # ---------------- Professional Goal Setter (validator) ----------------
 
-# Global bounds for the starter tool: specification only
 STARTER_BOUNDS = (
     "BOUNDS:\n"
     "- Only specify the goal (verifiable outcome + timeframe [or 'unsure'] + evidence-of-done).\n"
@@ -118,7 +116,6 @@ validator_llm = ChatOpenAI(
     model_kwargs={"response_format": {"type": "json_object"}}
 )
 
-# Keep keys the same (status, followup, extract)
 validator_prompt = ChatPromptTemplate.from_messages([
     ("system", """
 You are a validator for a single interview question inside a YAML flow.
@@ -183,9 +180,49 @@ def check_sufficient_llm(qdict, field_chat, judge_system: str, bounds: str):
     extract  = (data.get("extract") or "").strip()
     return status, followup, extract
 
-# ---------------- Contrast-aware Helper (minimal change) ----------------
-helper_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+# ---------------- Axes extractor ----------------
 
+axes_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+axes_prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+You extract DECISION AXES from a normalized goal.
+
+Definition of an axis: a set of mutually exclusive options along one characteristic we can pick
+BETWEEN, in order to maximize a particular AIM (e.g., small/mid/large company vs. long-term growth & stability).
+
+Return STRICT JSON: {{\"axes\":[{{\"key\":\"work_model\",\"label\":\"Work model\",\"aim\":\"optimize fit & lifestyle\",\"options\":[\"onsite\",\"hybrid\",\"remote\"]}}]}}
+Rules:
+- as many clearly relevant axes to the job as possible.
+- key: short snake_case.
+- label: concise human label.
+- aim: why this axis matters / what we are trying to optimize when choosing on it.
+- options: as many as possible, preferably exhaustively.
+"""),
+    ("user", "GOAL: {goal}")
+])
+
+
+def extract_axes_from_goal(goal: str) -> List[Dict[str, Any]]:
+    try:
+        msgs = axes_prompt.format_messages(goal=goal)
+        r = axes_llm.invoke(msgs)
+        data = json.loads(r.content)
+        axes = data.get("axes", [])
+        clean = []
+        for a in axes:
+            key = str(a.get("key","")).strip() or None
+            label = str(a.get("label","")).strip() or None
+            aim = str(a.get("aim","")).strip() or ""
+            opts = [str(x).strip() for x in (a.get("options") or []) if str(x).strip()]
+            if key and label and opts:
+                clean.append({"key": key, "label": label, "aim": aim, "options": opts})
+        return clean[:8]
+    except Exception as e:
+        print("AXES_EXTRACT_FAIL:", e)
+        return []
+
+# ---------------- Helper explainer ----------------
+helper_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
 helper_prompt = ChatPromptTemplate.from_messages([
     ("system", """
 You are a kind, concise explainer. The user is asking a clarifying question, or seems confused about a detail
@@ -198,9 +235,7 @@ Grounding:
 - Eliminate any scenario that conflicts with stated must-nots.
 
 Helpful pattern:
-"Imagine the scenario in which <goal completed with one plausible value of the missing detail>. <Details about failures they'll encounter. Details about how they'll overcome them to inevitably succeed>. You may experience <visualize 3 reasons why people pick that goal>. Would you be okay with that?"
-
-Present the helpful pattern
+"Imagine the scenario in which <goal completed with one plausible value of the missing detail>. That might look like <outcome>. Would you be okay with that?"
 """),
     ("user", """
 QUESTION_PROMPT: {qprompt}
@@ -232,21 +267,14 @@ def is_user_question(text: str) -> bool:
     )
 
 def answer_user_question(qdict, field_chat, user_text: str, known_answers: Optional[dict] = None, bounds: str = "") -> str:
-    """
-    Produce a grounded, non-repeating set of contrastive scenarios using the current field transcript
-    and any known answers. Scenarios keep known details fixed and only vary the missing detail.
-    """
     examples = "\n".join(qdict.get("examples", [])) or "None"
     transcript = "\n".join([f'{m["role"].upper()}: {m["content"]}' for m in field_chat]) or "EMPTY"
-    known_dump = ""
     if known_answers:
         pairs = []
         for k, v in known_answers.items():
-            if not v:
-                continue
+            if not v: continue
             sv = str(v)
-            if len(sv) > 160:
-                sv = sv[:157] + "..."
+            if len(sv) > 160: sv = sv[:157] + "..."
             pairs.append(f"{k}: {sv}")
         known_dump = "\n".join(pairs) if pairs else "None"
     else:
@@ -297,7 +325,7 @@ def dialogue(t: Turn):
     sess = SESSIONS[t.session_id]
 
     base_flow = FLOW_REGISTRY.get(flow_id) if flow_id else None
-    active_flow = base_flow  # no persona swap in this minimal design
+    active_flow = base_flow
 
     if active_flow:
         # INIT
@@ -322,7 +350,7 @@ def dialogue(t: Turn):
             node = active_flow["nodes"][sess["node_id"]]
             qdict = next(q for q in node["asks"] if q["id"] == sess["awaiting"])
 
-            # If the user asked a question, answer kindly (grounded, non-repeating), then re-ask
+            # Clarifying question?
             bounds = (qdict.get("bounds") or "") + ("\n" + STARTER_BOUNDS)
             if is_user_question(t.message):
                 expl = answer_user_question(
@@ -335,7 +363,7 @@ def dialogue(t: Turn):
                 sess["field_chat"].append({"role": "assistant", "content": expl})
                 return {"reply": expl}
 
-            # Otherwise validate sufficiency
+            # Validate sufficiency
             status, followup, extract = check_sufficient_llm(
                 qdict,
                 sess["field_chat"],
@@ -344,7 +372,6 @@ def dialogue(t: Turn):
             )
 
             if status == "insufficient":
-                # Keep us on this ask; provide rich follow-up (with examples) in one message
                 sess["field_chat"].append({"role": "assistant", "content": followup})
                 return {"reply": followup or "Could you add a bit more detail?"}
 
@@ -353,7 +380,7 @@ def dialogue(t: Turn):
             sess["answers"][sess["awaiting"]] = final_value
             sess["field_chat"] = []
 
-            # This composite only has one ask; route to end
+            # Route
             step = next_node(active_flow, sess["node_id"], sess["answers"])
             while "goto" in step:
                 sess["node_id"] = step["goto"]
@@ -364,17 +391,30 @@ def dialogue(t: Turn):
                 return {"reply": step["ask"]["prompt"]}
 
             if "end" in step:
-                # Finish and hint the next tool (Options)
                 normalized = sess["answers"].get("goal", "").strip()
-                SESSIONS.pop(t.session_id, None)
+                # Extract axes & format message
+                axes = extract_axes_from_goal(normalized) if normalized else []
+                lines = []
+                for a in axes:
+                    opts = " / ".join(a["options"])
+                    aim  = f" — aim: {a['aim']}" if a.get("aim") else ""
+                    lines.append(f"{a['label']}")#: {opts}{aim}")
+                axes_text = ("\n".join(lines)) if lines else "— (No obvious axes found yet.)"
+
                 rec = step.get("recommendation", "Finished.")
-                if normalized:
-                    rec = f"{rec}\n\nGoal locked: {normalized}"
-                return {"reply": rec}
+                msg = (
+                    f"{rec}\n\n"
+                    f"Here are **decision axes** you can explore next: "
+                    f"{axes_text}\n\n"
+                )
+
+                # close session for this flow
+                SESSIONS.pop(t.session_id, None)
+                return {"reply": msg, "axes": axes}
 
             return {"reply": "Flow advanced but reached an unexpected state."}
 
-    # Fallback: no YAML for this tool → normal chat
+    # Fallback (no YAML)
     sys_text = t.system_override or system_for(tool)
     msgs = dialogue_prompt.format_messages(system_text=sys_text, history=t.history, message=t.message)
     resp = llm.invoke(msgs)
@@ -382,13 +422,6 @@ def dialogue(t: Turn):
 
 @app.post("/flow/next")
 def flow_next(req: FlowReq):
-    """
-    Advance a flow. Send {flow_id, node_id?, answers}.
-    Returns either:
-      - {node_id, ask: {...}, awaiting}
-      - {goto: "<next_node_id>"}
-      - {end: True, recommendation: "..."}
-    """
     if req.flow_id not in FLOW_REGISTRY:
         return {"error": f"unknown flow_id: {req.flow_id}"}
 
@@ -396,7 +429,6 @@ def flow_next(req: FlowReq):
     node_id = req.node_id or flow["start"]
     step = next_node(flow, node_id, req.answers)
 
-    # Decorate scale questions with helper text if the node defines labels
     if "ask" in step:
         ask = step["ask"]
         if ask.get("type") == "scale_1_5":

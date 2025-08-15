@@ -1,39 +1,45 @@
-// components/tools/LLMDialog.jsx
+// components/LLMDialogue.jsx
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 export default function LLMDialog({
   tool = "purpose_finder",
   systemOverride,
   toolsMeta = [],
 }) {
-  // --- config / utils
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+
+  // --- tool / axis (axis only matters for non-goal tools)
+  const sp = useSearchParams();
+  const isGoalTool = tool === "smart-goal";
+  const currentAxis = isGoalTool ? "" : (sp.get("axis") || "");
 
   const rid = () =>
     (typeof crypto !== "undefined" && crypto.randomUUID)
       ? crypto.randomUUID()
       : "id_" + Math.random().toString(36).slice(2);
 
-  const getToolLabel = (slug) =>
-    toolsMeta.find((t) => t.slug === slug)?.label || slug;
-
   const GENERIC_OPENER = "How can I help you?";
 
+  // --- simple axis color (stable hash -> HSL)
+  const axisColor = (key) => {
+    if (!key) return "#999";
+    let h = 0; for (let i=0;i<key.length;i++) h = (h*31 + key.charCodeAt(i)) % 360;
+    return `hsl(${h}, 70%, 40%)`;
+  };
+
   // --- state
-  const [current, setCurrent] = useState([]); // new-dialogue working buffer
-  const [saved, setSaved] = useState([]);     // [{id,title,messages,createdAt,tool}]
+  const [current, setCurrent] = useState([]);
+  const [saved, setSaved] = useState([]); // each {id,title,messages,createdAt,tool,axis?}
   const [selected, setSelected] = useState({ type: "current", id: null });
 
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [err, setErr] = useState("");
-
-  const [editingId, setEditingId] = useState(null);
-  const [editingTitle, setEditingTitle] = useState("");
 
   const listRef = useRef(null);
   useEffect(() => {
@@ -47,11 +53,8 @@ export default function LLMDialog({
     if (nearBottom) requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
   }, [selected, current, saved]);
 
-  // --- helpers
   const hasAnyUser = (msgs) => msgs.some((m) => m.role === "user");
   const hasContent = (msgs) => msgs.some((m) => m.role === "user" || m.role === "assistant");
-  const messagesEqual = (a, b) =>
-    a.length === b.length && a.every((m, i) => m.role === b[i]?.role && m.text === b[i]?.text);
 
   const firstUserSnippet = (msgs) => {
     const firstUser = msgs.find((m) => m.role === "user")?.text?.trim();
@@ -60,29 +63,31 @@ export default function LLMDialog({
     return raw + (firstUser.length > 20 ? "…" : "");
   };
 
-  // Title rule used for both header (preview) and actual save:
-  // - If no existing saved chat for this tool -> use tool label
-  // - Else -> use first 20 chars of first user message, or tool label if none
   const computeSavedTitle = (msgs, toolSlug, savedList) => {
-    const label = getToolLabel(toolSlug);
     const exists = savedList.some((s) => s.tool === toolSlug);
-    if (!exists) return label;
+    if (!exists) return toolSlug;
     const snippet = firstUserSnippet(msgs);
-    return snippet || label;
+    return snippet || toolSlug;
   };
 
   const openCurrent = () => {
     setSelected({ type: "current", id: null });
-    // If the tool already has a saved chat, reset to a generic (non-tool) opener.
     const hasSavedForTool = saved.some((s) => s.tool === tool);
     if (hasSavedForTool) {
       setCurrent([{ role: "assistant", text: GENERIC_OPENER }]);
-      // prevent any auto-init opener from firing
       initKeyRef.current = null;
     }
   };
 
   const openSaved = (id) => setSelected({ type: "saved", id });
+
+  // Only filter by axis for non-goal tools; show everything for SmartGoal
+  const visibleSaved = useMemo(() => {
+    if (isGoalTool || !currentAxis) return saved;
+    return saved.filter((s) =>
+      s.tool === "smart-goal" ? true : (s.axis || "") === currentAxis
+    );
+  }, [saved, currentAxis, isGoalTool]);
 
   const selectedMessages = useMemo(() => {
     if (selected.type === "current") return current;
@@ -104,12 +109,6 @@ export default function LLMDialog({
     }
   };
 
-  function toBackendHistory(msgs) {
-    return msgs
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map(({ role, text }) => ({ role, content: text }));
-  }
-
   // --- tool switching / auto-save
   const prevToolRef = useRef(tool);
   const initKeyRef = useRef(null);
@@ -119,14 +118,9 @@ export default function LLMDialog({
 
     const prevTool = prevToolRef.current;
 
-    // 1) If on current and it has content, save it under the PREVIOUS tool
+    // Save current buffer under the previous tool (carry axis only for non-goal)
     if (selected.type === "current" && hasContent(current)) {
       setSaved((prevSaved) => {
-        const already = prevSaved.find(
-          (s) => s.tool === prevTool && messagesEqual(s.messages, current)
-        );
-        if (already) return prevSaved;
-
         const id = rid();
         const title = computeSavedTitle(current, prevTool, prevSaved);
         const entry = {
@@ -134,41 +128,46 @@ export default function LLMDialog({
           title,
           createdAt: new Date().toISOString(),
           tool: prevTool,
-          messages: [...current], // clone to prevent spillover
+          axis: prevTool === "smart-goal" ? "" : (currentAxis || ""),
+          messages: [...current],
         };
         return [entry, ...prevSaved];
       });
     }
 
-    // 2) Open existing saved chat for the NEW tool, else start fresh.
-    const found = saved.find((s) => s.tool === tool);
+    // Open saved chat for (tool, axis) or start fresh
+    const found = saved.find(
+      (s) => s.tool === tool && (tool === "smart-goal" ? true : (s.axis || "") === (currentAxis || ""))
+    );
     if (found) {
       setSelected({ type: "saved", id: found.id });
-      // Ensure the new-dialogue buffer is clean (prevents later spillover)
       setCurrent([]);
       initKeyRef.current = null;
     } else {
       setSelected({ type: "current", id: null });
-      setCurrent([]); // ensure empty so init will run
+      setCurrent([]);
       initKeyRef.current = null;
     }
 
     setErr("");
     prevToolRef.current = tool;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool]);
+  }, [tool, currentAxis]);
 
-  // --- auto-init: only when no saved chat exists for this tool and current is empty
+  // --- auto-init opener (no saved chat for this tool/axis)
   useEffect(() => {
-    const hasSavedForTool = saved.some((s) => s.tool === tool);
+    const hasSavedForToolAxis = saved.some(
+      (s) => s.tool === tool && (tool === "smart-goal" ? true : (s.axis || "") === (currentAxis || ""))
+    );
     if (selected.type !== "current") return;
-    if (hasSavedForTool) return;    // if there is a saved chat, never auto-init
+    if (hasSavedForToolAxis) return;
     if (current.length > 0) return;
 
-    const key = `current::${tool}`;
+    const axisKey = isGoalTool ? "-" : (currentAxis || "-");
+    const key = `current::${tool}::${axisKey}`;
     if (initKeyRef.current === key) return;
 
-    let alive = true;
+    let alive = TrueFlag();
     setErr("");
     setThinking(true);
 
@@ -186,32 +185,45 @@ export default function LLMDialog({
           }),
         });
         const data = await res.json();
-        const opener =
-          typeof data?.reply === "string"
-            ? data.reply
-            : "What decision are we working on?";
+        const opener = typeof data?.reply === "string" ? data.reply : "What decision are we working on?";
 
-        if (!alive) return;
-        const stillSavedForTool = saved.some((s) => s.tool === tool);
+        if (!alive.v) return;
+        const hasSavedNow = saved.some(
+          (s) => s.tool === tool && (tool === "smart-goal" ? true : (s.axis || "") === (currentAxis || ""))
+        );
         if (selected.type !== "current") return;
-        if (stillSavedForTool) return; // a saved chat appeared, don't add opener
+        if (hasSavedNow) return;
         if (initKeyRef.current === key) return;
+
+        // If backend sent axes, broadcast so the Axes picker fills
+        if (Array.isArray(data?.axes)) {
+          window.dispatchEvent(new CustomEvent("axes:update", { detail: data.axes }));
+        }
 
         setSelectedMessages((prev) => [...prev, { role: "assistant", text: opener }]);
         initKeyRef.current = key;
       } catch {
-        if (!alive) return;
+        if (!alive.v) return;
         setSelectedMessages((prev) => [
           ...prev,
           { role: "assistant", text: "⚠️ Couldn’t start the session. Try sending a message." },
         ]);
       } finally {
-        if (alive) setThinking(false);
+        if (alive.v) setThinking(false);
       }
     })();
 
-    return () => { alive = false; };
-  }, [tool, selected.type, current.length, saved, API_URL, systemOverride]);
+    return () => { alive.v = false; };
+  }, [tool, currentAxis, isGoalTool, selected.type, current.length, saved, API_URL, systemOverride]);
+
+  // tiny flag helper
+  function TrueFlag(){ return { v: true }; }
+
+  function toBackendHistory(msgs) {
+    return msgs
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map(({ role, text }) => ({ role, content: text }));
+  }
 
   // --- send
   const send = async (e) => {
@@ -247,6 +259,12 @@ export default function LLMDialog({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+
+      // Broadcast axes if present
+      if (Array.isArray(data?.axes)) {
+        window.dispatchEvent(new CustomEvent("axes:update", { detail: data.axes }));
+      }
+
       const reply = typeof data?.reply === "string" ? data.reply : JSON.stringify(data);
       setSelectedMessages((prev) => [...prev, { role: "assistant", text: reply }]);
     } catch (e) {
@@ -261,10 +279,9 @@ export default function LLMDialog({
     }
   };
 
-  // --- manual save button
+  // --- manual save
   const saveCurrent = () => {
     if (!current.length) return;
-
     setSaved((prevSaved) => {
       const id = rid();
       const title = computeSavedTitle(current, tool, prevSaved);
@@ -273,64 +290,19 @@ export default function LLMDialog({
         title,
         createdAt: new Date().toISOString(),
         tool,
-        messages: [...current], // clone to prevent spillover
+        axis: isGoalTool ? "" : (currentAxis || ""),
+        messages: [...current],
       };
       return [entry, ...prevSaved];
     });
-
-    // Hard reset the "New Dialogue" buffer to a generic, non-tool opener
     setCurrent([{ role: "assistant", text: GENERIC_OPENER }]);
     setSelected({ type: "current", id: null });
     setText("");
     setErr("");
     setThinking(false);
     setLoading(false);
-    initKeyRef.current = null; // do not auto-init; this is generic mode
+    initKeyRef.current = null;
   };
-
-  // --- delete / rename
-  const deleteSaved = (id) => {
-    setSaved((prev) => prev.filter((s) => s.id !== id));
-    if (selected.type === "saved" && selected.id === id)
-      setSelected({ type: "current", id: null });
-    if (editingId === id) {
-      setEditingId(null);
-      setEditingTitle("");
-    }
-  };
-
-  const startRename = (item) => {
-    setEditingId(item.id);
-    setEditingTitle(item.title);
-  };
-  const commitRename = () => {
-    const title = editingTitle.trim() || "Dialogue";
-    setSaved((prev) => prev.map((s) => (s.id === editingId ? { ...s, title } : s)));
-    setEditingId(null);
-    setEditingTitle("");
-  };
-  const cancelRename = () => {
-    setEditingId(null);
-    setEditingTitle("");
-  };
-
-  // --- header title logic (preview shows what the save-name will be)
-  const isCurrent = selected.type === "current";
-  const hasSavedForTool = saved.some((s) => s.tool === tool);
-  const headerTitle = (() => {
-    if (isCurrent) {
-      if (!hasAnyUser(current)) {
-        // If there is already a saved chat for this tool, call it "New Dialogue".
-        if (hasSavedForTool) return "New Dialogue";
-        // Otherwise, preview the eventual save-name for a first chat: tool label.
-        return computeSavedTitle(current, tool, saved);
-      }
-      // With user input, preview the eventual save-name now.
-      return computeSavedTitle(current, tool, saved);
-    }
-    // Saved chat
-    return saved.find((s) => s.id === selected.id)?.title ?? "Dialogue";
-  })();
 
   // --- render
   return (
@@ -340,77 +312,60 @@ export default function LLMDialog({
         <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
           <button
             onClick={openCurrent}
-            className={`w-full text-left border rounded px-2 py-1 text-sm ${
-              isCurrent ? "bg-gray-100" : "hover:bg-gray-50"
-            }`}
+            className={`w-full text-left border rounded px-2 py-1 text-sm ${selected.type === "current" ? "bg-gray-100" : "hover:bg-gray-50"}`}
           >
             New Dialogue
           </button>
 
-          {saved.map((s) => (
+          {visibleSaved.map((s) => (
             <div key={s.id} className="flex items-center gap-2">
-              {editingId === s.id ? (
-                <input
-                  autoFocus
-                  value={editingTitle}
-                  onChange={(e) => setEditingTitle(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRename();
-                    if (e.key === "Escape") cancelRename();
-                  }}
-                  className="flex-1 border rounded px-2 py-1 text-sm"
-                />
-              ) : (
-                <button
-                  onClick={() => openSaved(s.id)}
-                  onDoubleClick={() => startRename(s)}
-                  className={`flex-1 text-left border rounded px-2 py-1 text-sm ${
-                    selected.type === "saved" && selected.id === s.id
-                      ? "bg-gray-100"
-                      : "hover:bg-gray-50"
-                  }`}
-                  title={`${s.title}\n(Double-click to rename)`}
-                >
-                  {s.title}
-                </button>
-              )}
               <button
-                onClick={() => deleteSaved(s.id)}
-                className="border rounded px-2 text-xs"
-                title="Delete"
+                onClick={() => openSaved(s.id)}
+                className="flex-1 text-left border rounded px-2 py-1 text-sm hover:bg-gray-50"
+                style={{ borderColor: s.axis ? axisColor(s.axis) : undefined }}
+                title={s.axis ? `axis: ${s.axis}` : ""}
               >
-                ×
+                {s.title}
               </button>
+              <span
+                className="text-[10px] px-1.5 py-0.5 border rounded"
+                style={{ color: axisColor(s.axis || ""), borderColor: axisColor(s.axis || "") }}
+              >
+                {s.axis || "—"}
+              </span>
             </div>
           ))}
+        </div>
+        <div className="px-2 py-2 border-t">
+          <button onClick={saveCurrent} className="w-full border rounded px-2 py-1 text-sm">
+            Save
+          </button>
         </div>
       </aside>
 
       <section className="flex-1 min-h-0 flex flex-col">
         <div className="px-3 py-2 border-b flex items-center gap-2">
-          <div className="font-medium">{headerTitle}</div>
-          <div className="ml-auto flex items-center gap-2">
-            {isCurrent && (
-              <button onClick={saveCurrent} className="border rounded px-3 py-1">
-                Save
-              </button>
-            )}
+          <div className="font-medium">
+            {selected.type === "current" ? "current" : (saved.find((s) => s.id === selected.id)?.title ?? "dialogue")}
           </div>
+          {/* Show axis chip only for non-goal tools and when an axis is actually set */}
+          {!isGoalTool && currentAxis && (
+            <span
+              className="text-xs ml-2 px-2 py-0.5 border rounded"
+              style={{ color: axisColor(currentAxis), borderColor: axisColor(currentAxis) }}
+            >
+              axis: {currentAxis}
+            </span>
+          )}
         </div>
 
-        <div
-          ref={listRef}
-          className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2 text-sm"
-        >
-          {selectedMessages
+        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2 text-sm">
+          {(selectedMessages || [])
             .filter((m) => m.role !== "system")
             .map((m, i) => (
               <div key={i} className={m.role === "user" ? "text-right" : ""}>
                 <span className="inline-block border rounded px-2 py-1 bg-white">
-                  <strong className="mr-1">
-                    {m.role === "user" ? "You:" : "LLM:"}
-                  </strong>
+                  <strong className="mr-1">{m.role === "user" ? "You:" : "LLM:"}</strong>
                   {m.text}
                 </span>
               </div>
@@ -421,9 +376,6 @@ export default function LLMDialog({
                 LLM is thinking…
               </span>
             </div>
-          )}
-          {!selectedMessages.length && !thinking && (
-            <div className="text-xs text-gray-500">No messages yet.</div>
           )}
           {!!err && <div className="text-xs text-red-600">Error: {err}</div>}
         </div>

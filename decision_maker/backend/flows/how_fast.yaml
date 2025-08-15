@@ -7,15 +7,16 @@ nodes:
       - id: year
         type: scale_1_5
         prompt: >
-          Imagine it’s a year from now. How much did THIS decision impact your happiness? (1–5)
+          Imagine it’s a year from now. How much did THIS decision about {axis}
+          impact your happiness/trajectory over the year? (1–5)
       - id: month
         type: scale_1_5
         prompt: >
-          Same, but over the next month. (1–5)
+          And over the next month, thinking specifically about {axis}. (1–5)
       - id: day
         type: scale_1_5
         prompt: >
-          And over the next day. (1–5)
+          And over the next day, for {axis}. (1–5)
     scale_labels:
       1: "Negligible/you wouldn't notice"
       2: "Small/occasional blip"
